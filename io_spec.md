@@ -6,7 +6,7 @@ fips,date,cases,deaths
 ```
 
 Where:
-  - `state` is one of the fifty states plus PR and DC
+  - `state` is one of the fifty states plus "Puerto Rico" and "District of Columbia"
   - `fips` is a 5-character string matching /^[0-9]{5}$/
   - `cases` is an nonnegative integer
   - `deaths` is an nonnegative integer
