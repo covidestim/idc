@@ -20,7 +20,7 @@ fips,date,system_state
 
 Where:
   - `state` is one of the fifty states plus PR and DC
-  - `fips` is a 5-character string matching /^[0-9]{5}$/
+  - `fips` is a 5-character string matching `/^[0-9]{5}$/`
   - `system_state` is one of the following strings:
     - `NOMINAL`
     - `NONREPORTING`
