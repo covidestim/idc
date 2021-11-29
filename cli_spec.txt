@@ -1,0 +1,14 @@
+Input Data Classifier
+
+Azure key must be passed as the environment variable AZURE_OCP_APIM_SUBSCRIPTION_KEY.
+
+Usage:
+  idc.py -o <path> --key <key> <input_path>
+  idc.py -h | --help
+  idc.py --version
+
+Options:
+  <input_path>  Path to a CSV of input data. 
+  -o <path>     Path to write output CSV to.
+  --key <key>   Which geo type is being used ("state"/"fips")
+  -h --help     Show this screen.
