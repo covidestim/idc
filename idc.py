@@ -603,6 +603,11 @@ def viterbiFromJS(start_probability,
 def classifyAndDumpCSV(inFileName,outFileName,isFIPS):
     observations=inputDataFromCSV(inFileName)
     res=runViterbi(observations)
+    if (isFIPS):
+        region='fips'
+    else:
+        region='state'
+    regionList=[o[region] for o in observations[1:]]
     dateList=[o['date'] for o in observations[1:]]
     caseList=[o['cases'] for o in observations[1:]]
     stateList=[STATES[r] for r in res[1]] 
@@ -614,9 +619,9 @@ def classifyAndDumpCSV(inFileName,outFileName,isFIPS):
     colNames=[regionColName,'date','system_state']
     outF.writelines(','.join(colNames) + '\n')
     for i in range(len(dateList)):
-        outF.writelines('%s,%s,%s\n'%(fipsOrState,dateList[i],stateList[i]))
-    outF.close()
-    
+        outF.writelines('%s,%s,%s\n'%(regionList[i],dateList[i],stateList[i]))
+    outF.close() 
+     
 
 def runViterbi(observations):
     detailedObs=observationFromTS(observations)
