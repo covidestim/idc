@@ -11,7 +11,7 @@ Usage:
 
 
 Options:
-  <input_path>  Path to a CSV of input data. 
+  <input_path>  Path to a CSV of input data.
   -o <path>     Path to write output CSV to.
   --key <key>   Which geo type is being used ("state"/"fips")
   --test        run automated doctests
@@ -30,6 +30,8 @@ import time
 import datetime
 import hmmlearn
 from docopt import docopt
+from itertools import groupby
+from tqdm import tqdm
 
 STATES=["NOMINAL", "NONREPORTING", "EXPECTED_DUMP", "DUMP"]
 
@@ -55,7 +57,17 @@ def inputDataFromCSV(fName):
                      'cases':int(splts[2]),
                      'deaths':int(splts[3])})
         line=inF.readline()
-    return rows
+
+    def keyDate(val):
+        return val['date']
+
+    def keyTract(val):
+        return val[region]
+
+    rows_sorted = sorted(rows, key=keyTract)
+    rows_grouped = [sorted(list(it), key=keyDate) for k, it in groupby(rows_sorted, keyTract)]
+
+    return rows_grouped
 
 
 def inputDataToCSV(countyInput,outName,isFIPS=True):
@@ -68,16 +80,14 @@ def inputDataToCSV(countyInput,outName,isFIPS=True):
     outF.writelines(','.join([region,'date','cases','deaths']) + "\n"  )
     for row in inpD:
         outF.writelines(','.join([row[region],row['date'],"%d"%(row['cases']),("%d"%row['deaths']) + "\n" ]))
-    outF.close() 
-                             
-                             
+    outF.close()
+
 def inputData(countyInput):
     """
     >>> nh=inputData('09009')
     >>> nh[0]
     {'fips': '09009', 'date': '2020-03-14', 'cases': 4, 'deaths': 0}
     """
- 
 
     state = countyInput
 
@@ -85,7 +95,7 @@ def inputData(countyInput):
     if (len(state)==5):
         if (state.isnumeric()):
             isCounty=True
- 
+
     if (isCounty):
         geoColumn="fips"
     else:
@@ -142,7 +152,6 @@ def doForFIPSRange(start,end):
         outF.close()
         #time.sleep(3)
 
- 
 def anomalyDetector(inputData,paramDict):
     """
     >>> azureOutput=anomalyDetector(inputData('09009'),{'maxAnomalyRatio':0.075,'sensitivity':30})
@@ -165,12 +174,14 @@ def anomalyDetector(inputData,paramDict):
     numDays=len(inputData)
 
     indexMap=dict()
+
+    nzero = len(list(filter(lambda x: x['cases'] < 1, inputData)))
     for i in range(numDays):
-        if (inputData[i]['cases'] > 0):
+        if ((inputData[i]['cases'] > 0) | (nzero/numDays > 0.3)):
             indexMap[i]=len(nonZeroIndices)
             nonZeroIndices.add(i)
             nonZeroRows.append(inputData[i])
-    
+
     azureHeaders = {
         "Content-Type": "application/json",
         "Ocp-Apim-Subscription-Key": os.environ["AZURE_OCP_APIM_SUBSCRIPTION_KEY"] }
@@ -179,24 +190,16 @@ def anomalyDetector(inputData,paramDict):
     #TODO deaths???
     timepointList=",".join(['{ "timestamp" : "%sT00:00:00Z", "value": %d }'%(row['date'],row['cases']) for row in nonZeroRows])
 
-
     jsonSeriesStr += timepointList + "], "
-
     jsonSeriesStr += '"maxAnomalyRatio": %f, '%maxAnomalyRatio
-    
     jsonSeriesStr += '"sensitivity": %d, '%sensitivity
-
     jsonSeriesStr += ' "granularity": "daily", '
-    
     jsonSeriesStr += ' "period": 7 }'
-
 
     jsonSeries=json.dumps(jsonSeriesStr)
 
-    #import pdb; pdb.set_trace()
     conn=http.client.HTTPSConnection(azureAPIBase)
-
-    conn.request("POST",azureAPIAnomalyBase,body=jsonSeriesStr ,headers=azureHeaders )
+    conn.request("POST",azureAPIAnomalyBase,body=jsonSeriesStr,headers=azureHeaders)
     #print('waiting') 
     resp=conn.getresponse()
     #print('done waiting')
@@ -205,6 +208,8 @@ def anomalyDetector(inputData,paramDict):
 
     if (response.get('message','').find('Ratio of missing points should be less') != -1):
         print(response['message'])
+        print(inputData[0])
+        print(timepointList)
         raise Exception('not enough nonzero case dates for Azure')
 
     if (response.get('message','').find("The 'series' field must have at least") != -1):
@@ -587,7 +592,6 @@ def viterbiFromJS(start_probability,
             newpath[state] = path[mx[1]] + [state]
             
         path = newpath
-    
 
     mx = [-numpy.inf,None]
     for state in range(numStates):
@@ -595,33 +599,33 @@ def viterbiFromJS(start_probability,
         calc = V[len(observations)-1][state]
         if(calc > mx[0]):
             mx = [calc,state]
-    
- 
+
     return [mx[0], path[mx[1]]]
 
 #This is the overall end-to-end function from input csv to output csv
 def classifyAndDumpCSV(inFileName,outFileName,isFIPS):
-    observations=inputDataFromCSV(inFileName)
-    res=runViterbi(observations)
+    outF=open(outFileName,'w')
+    allObservations=inputDataFromCSV(inFileName)
+
     if (isFIPS):
         region='fips'
     else:
         region='state'
-    regionList=[o[region] for o in observations[1:]]
-    dateList=[o['date'] for o in observations[1:]]
-    caseList=[o['cases'] for o in observations[1:]]
-    stateList=[STATES[r] for r in res[1]] 
-    outF=open(outFileName,'w')
-    if (isFIPS):
-        regionColName='fips'
-    else:
-        regionColName='state'
-    colNames=[regionColName,'date','system_state']
+
+    colNames=[region,'date','system_state']
     outF.writelines(','.join(colNames) + '\n')
-    for i in range(len(dateList)):
-        outF.writelines('%s,%s,%s\n'%(regionList[i],dateList[i],stateList[i]))
-    outF.close() 
-     
+
+    for observations in tqdm(allObservations):
+        res=runViterbi(observations)
+        regionList=[o[region] for o in observations[1:]]
+        dateList=[o['date'] for o in observations[1:]]
+        caseList=[o['cases'] for o in observations[1:]]
+        stateList=[STATES[r] for r in res[1]]
+        for i in range(len(dateList)):
+            outF.writelines('%s,%s,%s\n'%(regionList[i],dateList[i],stateList[i]))
+
+    outF.close()
+
 
 def runViterbi(observations):
     detailedObs=observationFromTS(observations)
